@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <!-- PWA Manifest (inline) -->
+  <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Budget%20Mobile%22,%22short_name%22:%22Budget%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22%234f7cff%22,%22theme_color%22:%22%234f7cff%22,%22icons%22:[{%22src%22:%22data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><rect width='128' height='128' rx='24' fill='%234f7cff'/><text x='64' y='82' font-size='64' text-anchor='middle' fill='white'>฿</text></svg>%22,%22sizes%22:%22128x128%22,%22type%22:%22image/svg+xml%22}]}"> 
+  <meta name="theme-color" content="#4f7cff" />
+  <meta charset="UTF-8" />
+  <title>โปรแกรมรายรับรายจ่ายรายเดือน</title>
+
+  <!-- Chart.js must be a standalone script tag (no inline code inside) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- ====== App Utilities (LocalStorage) ====== -->
+  <script>
+  // ====== LocalStorage Save / Load ======
+  function saveData() {
+    const data = {
+      salary: months.map((_, i) => document.getElementById(`salary-${i}`).value),
+      extra: months.map((_, i) => document.getElementById(`extra-${i}`).value),
+      details: months.map((_, i) => {
+        const rows = document.querySelectorAll(`#detail-body-${i} tr`);
+        return Array.from(rows).map(r => ({
+          type: r.querySelector('select').value,
+          desc: r.querySelector('input[type="text"]').value,
+          amount: r.querySelector('input[type="number"]').value
+        }));
+      })
+    };
+    localStorage.setItem('financeData', JSON.stringify(data));
+  }
+
+  function loadData() {
+    const raw = localStorage.getItem('financeData');
+    if (!raw) return;
+
+    try {
+      const data = JSON.parse(raw);
+
+      data.salary?.forEach((v, i) => {
+        const el = document.getElementById(`salary-${i}`);
+        if (el) el.value = v;
+      });
+
+      data.extra?.forEach((v, i) => {
+        const el = document.getElementById(`extra-${i}`);
+        if (el) el.value = v;
+      });
+
+      data.details?.forEach((rows, i) => {
+        const body = document.getElementById(`detail-body-${i}`);
+        if (!body) return;
+        body.innerHTML = '';
+
+        rows.forEach(r => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>
+              <select onchange="update()">
+                <option value="income">รายรับ</option>
+                <option value="expense">รายจ่าย</option>
+              </select>
+            </td>
+            <td><input type="text" /></td>
+            <td><input type="number" min="0" oninput="update()" /></td>
+            <td><button class="btn-danger" onclick="this.closest('tr').remove(); update();">❌</button></td>
+          `;
+
+          tr.querySelector('select').value = r.type;
+          tr.querySelector('input[type="text"]').value = r.desc;
+          tr.querySelector('input[type="number"]').value = r.amount;
+
+          body.appendChild(tr);
+        });
+      });
+
+    } catch (e) {
+      console.warn('โหลดข้อมูลไม่สำเร็จ', e);
+    }
+  }
+  </script>
+
+  <style>
+    :root {
+      --fade-duration: 4s; /* ความนุ่มของเฟด */
+      --bg-blur: 3px;      /* blur แบบ cinematic */
+    }
+
+    /* ===== Background Slideshow ===== */
+    .bg-layer { position: fixed; inset: 0; z-index: -2; overflow: hidden; }
+
+    .bg {
+      position: absolute; inset: 0;
+      background-size: cover; background-position: center; background-repeat: no-repeat;
+      opacity: 0;
+      filter: blur(var(--bg-blur)) saturate(1.05);
+      transform: scale(1.05);
+      transition: opacity var(--fade-duration) ease-in-out;
+    }
+    .bg.active { opacity: 1; }
+
+    .bg-overlay { position: fixed; inset: 0; z-index: -1; transition: background 1.5s ease; }
+    .day { background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.82)); }
+    .night { background: linear-gradient(180deg, rgba(20,25,40,0.65), rgba(10,15,30,0.75)); }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 24px; min-height: 100vh; color: #1f2933;
+    }
+
+    h1 { font-size: 26px; margin-bottom: 16px; }
+    .container { max-width: 1200px; margin: auto; }
+
+    table {
+      border-collapse: collapse; width: 100%; margin-bottom: 14px;
+      background: white; border-radius: 14px; overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    }
+
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: center; }
+    th { background: #f3f6fb; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+
+    input, select {
+      padding: 6px 8px; border-radius: 8px; border: 1px solid #ddd; outline: none; transition: 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: #4f7cff; box-shadow: 0 0 0 2px rgba(79,124,255,0.15);
+    }
+
+    button {
+      padding: 6px 14px; border-radius: 999px; border: none;
+      background: linear-gradient(135deg,#4f7cff,#6fa3ff);
+      color: white; cursor: pointer; font-weight: 500;
+      transition: transform .1s ease, box-shadow .1s ease, opacity .1s ease;
+      box-shadow: 0 4px 10px rgba(79,124,255,0.35);
+    }
+
+    button:hover { transform: translateY(-1px); opacity: 0.95; }
+    button:active { transform: translateY(0); box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+
+    .btn-danger { background: linear-gradient(135deg,#ff5f5f,#ff8a8a); box-shadow: 0 4px 10px rgba(255,95,95,0.35); }
+
+    .summary { margin: 14px 0; font-weight: 600; background: white; padding: 12px 16px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+
+    canvas { background:white; padding:12px; border-radius:12px; box-shadow: 0 6px 16px rgba(0,0,0,0.06); }
+
+    .detail-row { display:none; background:#fbfcff; }
+
+    .detail-box { padding:14px; border-radius: 12px; background: #f7f9ff; }
+    .detail-table input { width: 100%; }
+
+    .income { color: #1fa36a; font-weight: 600; }
+    .expense { color: #e04f4f; font-weight: 600; }
+    .balance-positive { color:#1fa36a; font-weight:600; }
+    .balance-negative { color:#e04f4f; font-weight:600; }
+
+    .salary-input { width: 120px; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<!-- Background Slideshow Layers -->
+<div class="bg-layer">
+  <div class="bg active" id="bg1"></div>
+  <div class="bg" id="bg2"></div>
+</div>
+<div class="bg-overlay day" id="overlay"></div>
+
+<div class="container">
+  <h1>📊 โปรแกรมรายรับรายจ่าย (มกราคม - ธันวาคม)</h1>
+
+  <table id="dataTable">
+    <thead>
+      <tr>
+        <th>เดือน</th>
+        <th>เงินเดือน</th>
+        <th>รายได้พิเศษ</th>
+        <th>รายรับรวม (บาท)</th>
+        <th>รายจ่ายรวม (บาท)</th>
+        <th>คงเหลือ</th>
+        <th>รายละเอียด</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="summary" id="totalSummary"></div>
+
+  <div class="summary" id="yearlyExpenseSummary">
+    <b>สรุปรายจ่ายแยกตามประเภท (ทั้งปี)</b>
+    <div id="expenseBreakdown"></div>
+  </div>
+
+  <canvas id="chart" height="120"></canvas>
+</div>
+
+<script>
+// ===== Safe Service Worker Registration =====
+// Service Workers require HTTPS or localhost. Blob URLs are not supported.
+(function registerServiceWorkerSafely(){
+  try {
+    if (!('serviceWorker' in navigator)) return;
+
+    const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const isSecure = location.protocol === 'https:' || isLocalhost;
+
+    if (!isSecure) {
+      console.info('[PWA] Skipped ServiceWorker registration (not HTTPS / localhost).');
+      return;
+    }
+
+    // IMPORTANT: Do NOT use blob: URLs for SW registration.
+    // Expect a real file path like /sw.js when deployed on HTTPS.
+    // If sw.js is not present, we silently skip.
+    fetch('sw.js', { method: 'HEAD' })
+      .then(res => {
+        if (!res.ok) throw new Error('sw.js not found');
+        return navigator.serviceWorker.register('sw.js');
+      })
+      .then(() => console.info('[PWA] ServiceWorker registered.'))
+      .catch(() => console.info('[PWA] sw.js not found — running without offline cache.'));
+  } catch (err) {
+    console.warn('[PWA] ServiceWorker disabled:', err);
+  }
+})();
+
+/* ================= Background Slideshow ================= */
+
+const backgroundImages = ['DSCF1292.jpg','DSCF1361.jpg','DSCF1400.jpg'];
+let currentBgIndex = 0;
+let showingFirst = true;
+let isNight = false;
+let sunsetTime = null;
+
+const bgA = document.getElementById('bg1');
+const bgB = document.getElementById('bg2');
+const overlay = document.getElementById('overlay');
+
+bgA.style.backgroundImage = `url(${backgroundImages[0]})`;
+
+function applyBackground(nextIndex) {
+  currentBgIndex = (nextIndex + backgroundImages.length) % backgroundImages.length;
+  const nextImage = backgroundImages[currentBgIndex];
+
+  const show = showingFirst ? bgB : bgA;
+  const hide = showingFirst ? bgA : bgB;
+
+  show.style.backgroundImage = `url(${nextImage})`;
+  show.classList.add('active');
+  hide.classList.remove('active');
+
+  showingFirst = !showingFirst;
+}
+
+function nextBackground() { applyBackground(currentBgIndex + 1); }
+setInterval(nextBackground, 5 * 60 * 1000);
+
+function fetchSunset() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude, longitude } = pos.coords;
+    const url = `https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&formatted=0`;
+    fetch(url).then(res => res.json()).then(data => {
+      if (data.status === 'OK') { sunsetTime = new Date(data.results.sunset); updateDayNight(); }
+    }).catch(() => {});
+  });
+}
+
+function updateDayNight() {
+  if (!sunsetTime) return;
+  const now = new Date();
+  const night = now >= sunsetTime;
+  if (night !== isNight) {
+    isNight = night;
+    overlay.className = `bg-overlay ${isNight ? 'night' : 'day'}`;
+  }
+}
+
+fetchSunset();
+setInterval(updateDayNight, 10 * 60 * 1000);
+
+/* ================= App Logic ================= */
+
+const months = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const tbody = document.querySelector("#dataTable tbody");
+
+months.forEach((month, index) => {
+  const row = document.createElement("tr");
+  row.innerHTML = `
+    <td>${month}</td>
+    <td><input class="salary-input" type="number" min="0" value="0" oninput="update()" id="salary-${index}" placeholder="เงินเดือน" /></td>
+    <td><input class="salary-input income" type="number" min="0" value="0" oninput="update()" id="extra-${index}" placeholder="รายได้พิเศษ" /></td>
+    <td id="income-${index}" class="income">0</td>
+    <td id="expense-${index}" class="expense">0</td>
+    <td id="balance-${index}">0</td>
+    <td><button onclick="toggleDetail(${index})">ย่อ / ขยาย</button></td>
+  `;
+
+  const detailRow = document.createElement("tr");
+  detailRow.className = "detail-row";
+  detailRow.id = `detail-${index}`;
+  detailRow.innerHTML = `
+    <td colspan="7">
+      <div class="detail-box">
+        <b>รายละเอียดเดือน ${month}</b>
+        <table class="detail-table" width="100%">
+          <thead>
+            <tr><th>ประเภท</th><th>รายละเอียด</th><th>จำนวนเงิน</th><th>ลบ</th></tr>
+          </thead>
+          <tbody id="detail-body-${index}"></tbody>
+        </table>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button onclick="addDetail(${index}, 'income')">➕ เพิ่มรายรับ</button>
+          <button class="btn-danger" onclick="addDetail(${index}, 'expense')">➖ เพิ่มรายจ่าย</button>
+        </div>
+      </div>
+    </td>
+  `;
+
+  tbody.appendChild(row);
+  tbody.appendChild(detailRow);
+  addDetail(index, 'income');
+});
+
+let chart;
+
+function toggleDetail(index) {
+  const row = document.getElementById(`detail-${index}`);
+  row.style.display = row.style.display === 'table-row' ? 'none' : 'table-row';
+}
+
+function addDetail(monthIndex, presetType = 'income') {
+  const body = document.getElementById(`detail-body-${monthIndex}`);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>
+      <select onchange="update()">
+        <option value="income">รายรับ</option>
+        <option value="expense">รายจ่าย</option>
+      </select>
+    </td>
+    <td><input type="text" placeholder="เช่น ค่าอาหาร / งานเสริม" /></td>
+    <td><input type="number" min="0" value="0" oninput="update()" /></td>
+    <td><button class="btn-danger" onclick="this.closest('tr').remove(); update();">❌</button></td>
+  `;
+  body.appendChild(tr);
+  tr.querySelector('select').value = presetType;
+}
+
+function update() {
+  let totalIncome = 0;
+  let totalExpense = 0;
+  const incomes = [];
+  const expenses = [];
+  const expenseMap = {};
+
+  months.forEach((_, i) => {
+    const salary = Number(document.getElementById(`salary-${i}`).value) || 0;
+    const extra = Number(document.getElementById(`extra-${i}`).value) || 0;
+    const rows = document.querySelectorAll(`#detail-body-${i} tr`);
+
+    let monthIncome = salary + extra;
+    let monthExpense = 0;
+
+    rows.forEach(r => {
+      const type = r.querySelector('select').value;
+      const amount = Number(r.querySelector('input[type="number"]').value) || 0;
+      if (type === 'income') monthIncome += amount;
+      if (type === 'expense') {
+        monthExpense += amount;
+        const desc = r.querySelector('input[type="text"]').value || 'ไม่ระบุ';
+        expenseMap[desc] = (expenseMap[desc] || 0) + amount;
+      }
+    });
+
+    const balance = monthIncome - monthExpense;
+
+    document.getElementById(`income-${i}`).innerText = monthIncome.toLocaleString();
+    document.getElementById(`expense-${i}`).innerText = monthExpense.toLocaleString();
+
+    const balanceEl = document.getElementById(`balance-${i}`);
+    balanceEl.innerText = balance.toLocaleString();
+    balanceEl.className = balance >= 0 ? 'balance-positive' : 'balance-negative';
+
+    totalIncome += monthIncome;
+    totalExpense += monthExpense;
+    incomes.push(monthIncome);
+    expenses.push(monthExpense);
+  });
+
+  document.getElementById("totalSummary").innerText =
+    `รวมรายรับทั้งหมด: ${totalIncome.toLocaleString()} บาท | ` +
+    `รวมรายจ่ายทั้งหมด: ${totalExpense.toLocaleString()} บาท | ` +
+    `คงเหลือสุทธิ: ${(totalIncome - totalExpense).toLocaleString()} บาท`;
+
+  drawChart(incomes, expenses);
+  renderExpenseBreakdown(expenseMap);
+  saveData();
+}
+
+function renderExpenseBreakdown(expenseMap) {
+  const container = document.getElementById('expenseBreakdown');
+  const entries = Object.entries(expenseMap).sort((a,b) => b[1] - a[1]);
+
+  if (entries.length === 0) {
+    container.innerHTML = '<i>ยังไม่มีข้อมูลรายจ่าย</i>';
+    return;
+  }
+
+  container.innerHTML = entries.map(([name, value]) =>
+    `<div>• ${name} : ${value.toLocaleString()} บาท</div>`
+  ).join('');
+}
+
+function drawChart(incomes, expenses) {
+  const ctx = document.getElementById('chart');
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        showLine: true,
+        tension: 0.3,
+        label: 'รายจ่าย (แกนนอน) vs รายได้ (แกนตั้ง)',
+        data: incomes.map((income, i) => ({ x: expenses[i], y: income, month: months[i] }))
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const p = context.raw;
+              return `${p.month} : รายได้ ${p.y.toLocaleString()} บาท , รายจ่าย ${p.x.toLocaleString()} บาท`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'รายจ่าย (บาท)' } },
+        y: { title: { display: true, text: 'รายได้ (บาท)' } }
+      }
+    }
+  });
+}
+
+loadData();
+update();
+</script>
+</body>
+</html>
